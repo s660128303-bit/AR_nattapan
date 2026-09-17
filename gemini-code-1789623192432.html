@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR ยิงธนูสู้คำกริยา</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      font-family: 'Mitr', sans-serif;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000;
+      color: #fff;
+    }
+
+    /* Video & Canvases Layering */
+    #container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #webcam {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Mirror view */
+      z-index: 1;
+    }
+
+    #three-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    #hand-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 3;
+      pointer-events: none;
+      transform: scaleX(-1);
+    }
+
+    /* Screen Zones Overlay Lines */
+    .zone-divider-left {
+      position: absolute;
+      left: 25%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      border-left: 2px dashed rgba(255, 255, 255, 0.3);
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .zone-divider-right {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      border-left: 2px dashed rgba(255, 200, 0, 0.4);
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    /* Start Screen & Modals */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 15, 30, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 20px;
+      padding: 30px 40px;
+      max-width: 520px;
+      width: 90%;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 600;
+      color: #4DEEEA;
+      margin-bottom: 15px;
+      text-shadow: 0 0 10px rgba(77, 238, 234, 0.5);
+    }
+
+    .rules {
+      text-align: left;
+      font-size: 0.95rem;
+      color: #e0e0e0;
+      margin-bottom: 25px;
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 12px;
+    }
+
+    .sys-check {
+      margin-bottom: 25px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #4DEEEA;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .checkmark {
+      color: #2ECC71;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+
+    .btn {
+      background: linear-[#0072ff], #00c6ff);
+      background: linear-gradient(135deg, #2ECC71, #27AE60);
+      color: white;
+      border: none;
+      padding: 14px 36px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 6px 0 #1b7a43, 0 10px 20px rgba(0,0,0,0.3);
+      transition: all 0.1s ease;
+      display: inline-block;
+    }
+
+    .btn:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #1b7a43, 0 5px 10px rgba(0,0,0,0.3);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #E74C3C, #C0392B);
+      box-shadow: 0 6px 0 #842519;
+    }
+    .btn-danger:active {
+      box-shadow: 0 2px 0 #842519;
+    }
+
+    /* HUD UI */
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      pointer-events: none;
+    }
+
+    .hud-bar {
+      display: flex;
+      gap: 20px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 8px 25px;
+      border-radius: 30px;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .hud-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hud-label {
+      font-size: 0.75rem;
+      color: #94A3B8;
+      text-transform: uppercase;
+    }
+
+    .hud-value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #FFF;
+    }
+
+    #hand-status {
+      font-size: 0.8rem;
+      color: #CBD5E1;
+      background: rgba(0,0,0,0.5);
+      padding: 3px 12px;
+      border-radius: 12px;
+    }
+
+    #notice-text {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #FFE600;
+      min-height: 24px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    }
+
+    /* Popup Text Center */
+    #score-popup-container {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    .score-popup {
+      font-size: 4rem;
+      font-weight: 600;
+      animation: popupFade 1s forwards ease-out;
+      text-shadow: 0 4px 10px rgba(0,0,0,0.7);
+    }
+
+    .popup-green { color: #2ECC71; }
+    .popup-red { color: #E74C3C; }
+
+    @keyframes popupFade {
+      0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+      30% { opacity: 1; transform: scale(1.2) translateY(-10px); }
+      70% { opacity: 1; transform: scale(1) translateY(0); }
+      100% { opacity: 0; transform: scale(0.8) translateY(-30px); }
+    }
+
+    /* Side Control Panel */
+    #side-controls {
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .toggle-btn {
+      width: 130px;
+      padding: 10px;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.1s ease;
+    }
+
+    .toggle-btn.on {
+      background: #2ECC71;
+      box-shadow: 0 4px 0 #1e8449;
+    }
+
+    .toggle-btn.off {
+      background: #475569;
+      box-shadow: 0 4px 0 #1e293b;
+    }
+
+    .toggle-btn:active {
+      transform: translateY(3px);
+    }
+    .toggle-btn.on:active { box-shadow: 0 1px 0 #1e8449; }
+    .toggle-btn.off:active { box-shadow: 0 1px 0 #1e293b; }
+
+    .btn-reset {
+      background: #3B82F6;
+      box-shadow: 0 4px 0 #1d4ed8;
+      justify-content: center;
+    }
+    .btn-reset:active { box-shadow: 0 1px 0 #1d4ed8; }
+
+    /* Charge Bar UI Overlay */
+    #charge-bar-container {
+      position: absolute;
+      z-index: 4;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .charge-bar-bg {
+      width: 16px;
+      height: 120px;
+      background: rgba(0,0,0,0.6);
+      border: 2px solid #FFF;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+
+    .charge-bar-fill {
+      width: 100%;
+      height: 0%;
+      background: linear-gradient(to top, #FFE600, #FF0055);
+      transition: height 0.05s ease-out;
+    }
+
+    .charge-text {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #FFF;
+      margin-top: 4px;
+      text-shadow: 0 2px 4px #000;
+    }
+
+    .error-msg {
+      color: #FF6B6B;
+      font-size: 0.9rem;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container">
+    <video id="webcam" playsinline></video>
+
+    <canvas id="three-canvas"></canvas>
+
+    <canvas id="hand-canvas"></canvas>
+
+    <div class="zone-divider-left"></div>
+    <div class="zone-divider-right"></div>
+
+    <div id="hud">
+      <div class="hud-bar">
+        <div class="hud-item">
+          <span class="hud-label">คะแนน</span>
+          <span class="hud-value" id="score-val">0</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">เวลา</span>
+          <span class="hud-value" id="timer-val">60s</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">ข้อที่</span>
+          <span class="hud-value" id="quest-val">0/15</span>
+        </div>
+      </div>
+      <div id="notice-text">พร้อมยิงคำกริยา!</div>
+      <div id="hand-status">ซ้าย: รอ... | ขวา: รอ...</div>
+    </div>
+
+    <div id="score-popup-container"></div>
+
+    <div id="side-controls">
+      <button class="toggle-btn off" id="btn-swap">สลับมือ: <span>ปิด</span></button>
+      <button class="toggle-btn on" id="btn-points">จุดมือ: <span>เปิด</span></button>
+      <button class="toggle-btn on" id="btn-sound">เสียง: <span>เปิด</span></button>
+      <button class="toggle-btn btn-reset" id="btn-restart">เริ่มใหม่</button>
+    </div>
+
+    <div id="charge-bar-container">
+      <div class="charge-bar-bg">
+        <div class="charge-bar-fill" id="charge-fill"></div>
+      </div>
+      <span class="charge-text" id="charge-text">0%</span>
+    </div>
+
+    <div class="modal-overlay" id="start-screen">
+      <div class="card">
+        <h1>AR ยิงธนูสู้คำกริยา</h1>
+        <div class="rules">
+          🎯 <b>กติกาการเล่น:</b><br>
+          1. มือซ้ายถือคันธนู (จำกัดเฉพาะโซนฝั่งขวา)<br>
+          2. ยิงเฉพาะ <b>“คำกริยา”</b> ที่ลอยลงมาจากฝั่งซ้าย<br>
+          3. <b>กำมือขวา</b> เพื่อเริ่มดึงสายธนู แล้ว <b>แบมือขวา</b> เพื่อปล่อยลูกธนู<br>
+          4. ยิงถูกกริยา +10 | ยิงคำหลอก -5 | กริยาตกพื้น -5
+        </div>
+
+        <div class="sys-check">
+          <div class="check-item">
+            <span>เปิดกล้องถ่ายภาพ</span>
+            <div id="check-cam"><div class="spinner"></div></div>
+          </div>
+          <div class="check-item">
+            <span>โหลด AI Track มือ</span>
+            <div id="check-ai"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+        <div id="error-box" class="error-msg" style="display:none;"></div>
+        <button class="btn" id="btn-start" style="display:none;">เริ่มเกม</button>
+        <button class="btn btn-danger" id="btn-retry" style="display:none; margin-top:10px;">ลองใหม่</button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="end-screen" style="display:none;">
+      <div class="card">
+        <h1>จบเกม!</h1>
+        <p style="font-size: 1.2rem; margin-bottom: 10px;">คะแนนรวมของคุณ</p>
+        <div style="font-size: 3.5rem; font-weight: 600; color: #FFE600; margin-bottom: 20px;" id="final-score">0</div>
+        <button class="btn" id="btn-play-again">เล่นอีกครั้ง</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================
+       1. WEB AUDIO API SOUND SYSTEM
+       ========================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+      }
+
+      playBowPull(force) {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(120 + force * 150, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.08);
+      }
+
+      playArrowRelease() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+      }
+
+      playHitGood() {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+        osc.frequency.setValueAtTime(783.99, now + 0.16); // G5
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(now + 0.35);
+      }
+
+      playHitBad() {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.linearRampToValueAtTime(110, now + 0.25);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(now + 0.25);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* ==========================================
+       2. THAI VOCABULARY DATA
+       ========================================== */
+    const VERBS = ['วิ่ง', 'กิน', 'นอน', 'กระโดด', 'อ่าน', 'เขียน', 'หัวเราะ', 'ร้องเพลง', 'บิน', 'ว่ายน้ำ', 'เดิน', 'ยิ้ม', 'นั่ง', 'เต้น', 'ขับ'];
+    const TRAPS = ['บ้าน', 'แมว', 'สวย', 'รวดเร็ว', 'ครู', 'หนังสือ', 'ใหญ่', 'แดง', 'โต๊ะ', 'เก้าอี้', 'นก', 'รถยนต์', 'โรงเรียน'];
+
+    /* ==========================================
+       3. GAME STATE MANAGEMENT
+       ========================================== */
+    const CONFIG = {
+      totalQuestions: 15,
+      gameDuration: 60,
+      spawnInterval: 2200
+    };
+
+    let gameState = {
+      score: 0,
+      timeLeft: CONFIG.gameDuration,
+      questionCount: 0,
+      active: false,
+      swapHands: false,
+      showPoints: true,
+      soundEnabled: true
+    };
+
+    let timerInterval = null;
+    let spawnInterval = null;
+
+    /* ==========================================
+       4. THREE.JS SCENE SETUP & 3D MODELS
+       ========================================== */
+    const videoElement = document.getElementById('webcam');
+    const threeCanvas = document.getElementById('three-canvas');
+    const handCanvas = document.getElementById('hand-canvas');
+    const ctxHand = handCanvas.getContext('2d');
+
+    let scene, camera, renderer;
+    let bowGroup, bowStringLine, previewArrowMesh;
+    let activeArrows = [];
+    let activeFruits = [];
+
+    function initThreeJS() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 0, 10);
+
+      renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      dirLight.position.set(5, 10, 7);
+      scene.add(dirLight);
+
+      buildBow3D();
+      createPreviewArrow();
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      handCanvas.width = window.innerWidth;
+      handCanvas.height = window.innerHeight;
+    }
+
+    // Build Realistic Curved 3D Bow
+    function buildBow3D() {
+      bowGroup = new THREE.Group();
+
+      // Bow Stave (S-Curve shape)
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 2.2, -0.2),
+        new THREE.Vector3(-0.2, 1.2, 0.1),
+        new THREE.Vector3(0, 0, 0.2),
+        new THREE.Vector3(-0.2, -1.2, 0.1),
+        new THREE.Vector3(0, -2.2, -0.2)
+      ]);
+
+      const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.06, 8, false);
+      const bowMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.3, metalness: 0.2 });
+      const staveMesh = new THREE.Mesh(tubeGeo, bowMat);
+      bowGroup.add(staveMesh);
+
+      // Bow Grip Center
+      const gripGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 12);
+      const gripMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+      const gripMesh = new THREE.Mesh(gripGeo, gripMat);
+      bowGroup.add(gripMesh);
+
+      // Dynamic Bow String
+      const stringGeo = new THREE.BufferGeometry();
+      const stringPositions = new Float32Array([
+        0, 2.15, -0.2,  // Top tip
+        0, 0, 0.2,      // Nock/Hand pull point
+        0, -2.15, -0.2  // Bottom tip
+      ]);
+      stringGeo.setAttribute('position', new THREE.BufferAttribute(stringPositions, 3));
+      const stringMat = new THREE.LineBasicMaterial({ color: 0xFFFFFF, linewidth: 2 });
+      bowStringLine = new THREE.Line(stringGeo, stringMat);
+      bowGroup.add(bowStringLine);
+
+      bowGroup.position.set(3, 0, 0); // Default position right side
+      scene.add(bowGroup);
+    }
+
+    function updateBowString(pullOffsetZ) {
+      const positions = bowStringLine.geometry.attributes.position.array;
+      positions[3] = 0;
+      positions[4] = 0;
+      positions[5] = 0.2 - pullOffsetZ; // Pull string backwards
+      bowStringLine.geometry.attributes.position.needsUpdate = true;
+    }
+
+    function createPreviewArrow() {
+      previewArrowMesh = createArrowMesh();
+      previewArrowMesh.visible = false;
+      bowGroup.add(previewArrowMesh);
+    }
+
+    function createArrowMesh() {
+      const arrowGroup = new THREE.Group();
+
+      // Shaft
+      const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 2.2, 8);
+      shaftGeo.rotateX(Math.PI / 2);
+      const shaftMat = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
+      const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+      arrowGroup.add(shaft);
+
+      // Arrowhead Tip
+      const tipGeo = new THREE.ConeGeometry(0.06, 0.25, 8);
+      tipGeo.rotateX(-Math.PI / 2);
+      tipGeo.translate(0, 0, 1.15);
+      const tipMat = new THREE.MeshStandardMaterial({ color: 0x808080, metalness: 0.8 });
+      const tip = new THREE.Mesh(tipGeo, tipMat);
+      arrowGroup.add(tip);
+
+      // Fletching Feathers
+      const fletchGeo = new THREE.BoxGeometry(0.01, 0.15, 0.3);
+      const fletchMat = new THREE.MeshStandardMaterial({ color: 0xFF0000 });
+      const fletch1 = new THREE.Mesh(fletchGeo, fletchMat);
+      fletch1.position.set(0, 0.08, -0.9);
+      arrowGroup.add(fletch1);
+
+      return arrowGroup;
+    }
+
+    /* ==========================================
+       5. FRUIT & THAI WORD MESH GENERATOR
+       ========================================== */
+    function createFruitCanvasTexture(text, isVerb) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      // Background Sphere Gradient Texture
+      const grad = ctx.createRadialGradient(128, 128, 10, 128, 128, 120);
+      if (isVerb) {
+        grad.addColorStop(0, '#FFD700');
+        grad.addColorStop(1, '#FF4500');
+      } else {
+        grad.addColorStop(0, '#A855F7');
+        grad.addColorStop(1, '#3B82F6');
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(128, 128, 120, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      // Thai Text Render
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 42px "Mitr", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 6;
+      ctx.fillText(text, 128, 128);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function spawnFruit() {
+      if (!gameState.active || gameState.questionCount >= CONFIG.totalQuestions) return;
+
+      gameState.questionCount++;
+      document.getElementById('quest-val').innerText = `${gameState.questionCount}/${CONFIG.totalQuestions}`;
+
+      const isVerb = Math.random() < 0.65; // 65% chance for verb
+      const text = isVerb 
+        ? VERBS[Math.floor(Math.random() * VERBS.length)]
+        : TRAPS[Math.floor(Math.random() * TRAPS.length)];
+
+      const texture = createFruitCanvasTexture(text, isVerb);
+      const geo = new THREE.SphereGeometry(0.7, 32, 32);
+      const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.2 });
+      const fruitMesh = new THREE.Mesh(geo, mat);
+
+      // Spawn inside left 1/4 zone (Screen X coords converted to 3D world space)
+      // Screen X 5% to 22%
+      const worldX = -5.5 + Math.random() * 2.2; 
+      const worldY = 4.5; // Top of screen
+
+      fruitMesh.position.set(worldX, worldY, 0);
+      scene.add(fruitMesh);
+
+      activeFruits.push({
+        mesh: fruitMesh,
+        text: text,
+        isVerb: isVerb,
+        speed: 0.025 + Math.random() * 0.015
+      });
+    }
+
+    /* ==========================================
+       6. MEDIAPIPE HAND TRACKING & LOGIC
+       ========================================== */
+    let handTracker = null;
+    let rightHandLossTimer = null;
+
+    let handState = {
+      leftFound: false,
+      rightFound: false,
+      leftPos: { x: 0, y: 0 },
+      rightPos: { x: 0, y: 0 },
+      rightGesture: 'OPEN', // FIST, OPEN, HALF
+      isPulling: false,
+      chargeForce: 0,
+      lastChargeForce: 0
+    };
+
+    function initMediaPipe() {
+      handCanvas.width = window.innerWidth;
+      handCanvas.height = window.innerHeight;
+
+      handTracker = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      handTracker.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      handTracker.onResults(onHandResults);
+
+      // Camera Utilities
+      const cameraUtil = new Camera(videoElement, {
+        onFrame: async () => {
+          await handTracker.send({ image: videoElement });
+        },
+        width: 1280,
+        height: 720
+      });
+
+      cameraUtil.start()
+        .then(() => {
+          document.getElementById('check-cam').innerHTML = '<span class="checkmark">✓</span>';
+          checkInitReady();
+        })
+        .catch(err => {
+          showError("ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้งานกล้องในเบราว์เซอร์");
+        });
+    }
+
+    function checkInitReady() {
+      document.getElementById('check-ai').innerHTML = '<span class="checkmark">✓</span>';
+      document.getElementById('btn-start').style.display = 'inline-block';
+    }
+
+    function showError(msg) {
+      const errBox = document.getElementById('error-box');
+      errBox.innerText = msg;
+      errBox.style.display = 'block';
+      document.getElementById('btn-retry').style.display = 'inline-block';
+    }
+
+    function classifyGesture(landmarks) {
+      // Calculate distance between fingertips and wrist (landmark 0) vs MCP joints
+      const wrist = landmarks[0];
+      const fingerTips = [8, 12, 16, 20];
+      const fingerMCPs = [5, 9, 13, 17];
+
+      let foldedFingers = 0;
+      for (let i = 0; i < 4; i++) {
+        const tipDist = Math.hypot(landmarks[fingerTips[i]].x - wrist.x, landmarks[fingerTips[i]].y - wrist.y);
+        const mcpDist = Math.hypot(landmarks[fingerMCPs[i]].x - wrist.x, landmarks[fingerMCPs[i]].y - wrist.y);
+        if (tipDist < mcpDist * 1.1) {
+          foldedFingers++;
+        }
+      }
+
+      if (foldedFingers >= 3) return 'FIST';
+      if (foldedFingers <= 1) return 'OPEN';
+      return 'HALF';
+    }
+
+    function onHandResults(results) {
+      ctxHand.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+      let foundLeft = false;
+      let foundRight = false;
+
+      if (results.multiHandLandmarks && results.multiHandedness) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const label = results.multiHandedness[i].label; // 'Left' or 'Right'
+
+          // Render Hand Debug Points if enabled
+          if (gameState.showPoints) {
+            drawHandLandmarks(landmarks);
+          }
+
+          // Swap logic if user toggled swap
+          let effectiveLabel = label;
+          if (gameState.swapHands) {
+            effectiveLabel = label === 'Left' ? 'Right' : 'Left';
+          }
+
+          // Screen Normalization
+          const avgX = (1 - landmarks[9].x) * window.innerWidth; // Mirrored Screen X
+          const avgY = landmarks[9].y * window.innerHeight;
+
+          if (effectiveLabel === 'Left') {
+            foundLeft = true;
+            handState.leftPos = { x: avgX, y: avgY };
+          } else if (effectiveLabel === 'Right') {
+            foundRight = true;
+            handState.rightPos = { x: avgX, y: avgY };
+            handState.rightGesture = classifyGesture(landmarks);
+          }
+        }
+      }
+
+      handState.leftFound = foundLeft;
+      handState.rightFound = foundRight;
+
+      updateHandStatusUI();
+      processBowInteraction();
+    }
+
+    function drawHandLandmarks(landmarks) {
+      ctxHand.fillStyle = '#4DEEEA';
+      ctxHand.strokeStyle = '#FFFFFF';
+      ctxHand.lineWidth = 2;
+
+      for (let pt of landmarks) {
+        const x = pt.x * handCanvas.width;
+        const y = pt.y * handCanvas.height;
+        ctxHand.beginPath();
+        ctxHand.arc(x, y, 4, 0, Math.PI * 2);
+        ctxHand.fill();
+        ctxHand.stroke();
+      }
+    }
+
+    function updateHandStatusUI() {
+      const leftStr = handState.leftFound ? 'เจอ' : 'ไม่พบ';
+      let rightStr = 'ไม่พบ';
+      if (handState.rightFound) {
+        if (handState.rightGesture === 'FIST') rightStr = 'กำมือ';
+        else if (handState.rightGesture === 'OPEN') rightStr = 'แบมือ';
+        else rightStr = 'กึ่งแบ';
+      }
+
+      document.getElementById('hand-status').innerText = `มือซ้าย: ${leftStr} | มือขวา: ${rightStr}`;
+    }
+
+    /* ==========================================
+       7. BOW PULL & ARROW CHARGE LOGIC
+       ========================================== */
+    function processBowInteraction() {
+      // 1. Position Bow at Left Hand position, CONSTRAINED to Right Half (X >= 50% width)
+      const minBowX = window.innerWidth * 0.5;
+      let targetBowX = handState.leftFound ? handState.leftPos.x : window.innerWidth * 0.75;
+      targetBowX = Math.max(minBowX, targetBowX); // Lock bow to right half
+
+      let targetBowY = handState.leftFound ? handState.leftPos.y : window.innerHeight * 0.5;
+
+      // Convert Screen Coords to Three.js World Coords
+      const worldBowPos = screenToWorld(targetBowX, targetBowY, 0);
+      bowGroup.position.x = THREE.MathUtils.lerp(bowGroup.position.x, worldBowPos.x, 0.2);
+      bowGroup.position.y = THREE.MathUtils.lerp(bowGroup.position.y, worldBowPos.y, 0.2);
+
+      // 2. Right Hand Bow String Pulling Logic
+      if (handState.rightFound) {
+        if (rightHandLossTimer) {
+          clearTimeout(rightHandLossTimer);
+          rightHandLossTimer = null;
+        }
+
+        if (handState.rightGesture === 'FIST') {
+          // Start / Continue pulling
+          handState.isPulling = true;
+          calculatePullForce(worldBowPos);
+        } else if (handState.rightGesture === 'OPEN' && handState.isPulling) {
+          // Trigger Release!
+          releaseArrow();
+        }
+      } else {
+        // AI Tracking Loss Buffer (0.3s grace period)
+        if (handState.isPulling && !rightHandLossTimer) {
+          rightHandLossTimer = setTimeout(() => {
+            if (!handState.rightFound && handState.isPulling) {
+              releaseArrow(); // Release with cached force if lost
+            }
+          }, 300);
+        }
+      }
+
+      // Render Preview Arrow & Charge Bar
+      if (handState.isPulling) {
+        previewArrowMesh.visible = true;
+        updateBowString(handState.chargeForce * 1.2);
+        previewArrowMesh.position.z = -handState.chargeForce * 1.2;
+
+        updateChargeBarUI(targetBowX, targetBowY);
+      } else {
+        previewArrowMesh.visible = false;
+        updateBowString(0);
+        hideChargeBarUI();
+      }
+    }
+
+    function calculatePullForce(worldBowPos) {
+      const rightWorld = screenToWorld(handState.rightPos.x, handState.rightPos.y, 0);
+      // Distance pulled horizontally/backwards
+      const pullDist = Math.hypot(worldBowPos.x - rightWorld.x, worldBowPos.y - rightWorld.y);
+
+      // Dead zone & smooth accumulation
+      const minPull = 0.5;
+      const maxPull = 3.5;
+
+      if (pullDist > minPull) {
+        let rawForce = (pullDist - minPull) / (maxPull - minPull);
+        rawForce = Math.min(Math.max(rawForce, 0), 1.0);
+
+        // Smooth gradual force update
+        handState.chargeForce = THREE.MathUtils.lerp(handState.chargeForce, rawForce, 0.25);
+        handState.lastChargeForce = handState.chargeForce;
+
+        sound.playBowPull(handState.chargeForce);
+      }
+    }
+
+    function releaseArrow() {
+      if (!handState.isPulling) return;
+
+      const force = Math.max(handState.chargeForce, handState.lastChargeForce);
+      if (force > 0.15) { // Minimum threshold to shoot
+        spawnFlyingArrow(force);
+        sound.playArrowRelease();
+
+        const pct = Math.round(force * 100);
+        showNotice(`ยิง! ${pct}%`);
+      }
+
+      // Reset Pull State
+      handState.isPulling = false;
+      handState.chargeForce = 0;
+      handState.lastChargeForce = 0;
+    }
+
+    function spawnFlyingArrow(force) {
+      const arrowMesh = createArrowMesh();
+      arrowMesh.position.copy(bowGroup.position);
+
+      // Velocity based on charge force
+      const speed = 0.35 + force * 0.5;
+      const velocity = new THREE.Vector3(-speed, 0.05 * force, 0); // Flying towards left fruit zone
+
+      scene.add(arrowMesh);
+      activeArrows.push({
+        mesh: arrowMesh,
+        vel: velocity,
+        gravity: 0.008 / (force + 0.2) // Less gravity drop with higher force
+      });
+    }
+
+    /* ==========================================
+       8. UI HELPER FUNCTIONS
+       ========================================== */
+    function screenToWorld(screenX, screenY, targetZ) {
+      const vec = new THREE.Vector3(
+        (screenX / window.innerWidth) * 2 - 1,
+        -(screenY / window.innerHeight) * 2 + 1,
+        0.5
+      );
+      vec.unproject(camera);
+      const dir = vec.sub(camera.position).normalize();
+      const distance = (targetZ - camera.position.z) / dir.z;
+      return camera.position.clone().add(dir.multiplyScalar(distance));
+    }
+
+    function updateChargeBarUI(screenX, screenY) {
+      const bar = document.getElementById('charge-bar-container');
+      const fill = document.getElementById('charge-fill');
+      const text = document.getElementById('charge-text');
+
+      const pct = Math.round(handState.chargeForce * 100);
+      fill.style.height = `${pct}%`;
+      text.innerText = `${pct}%`;
+
+      bar.style.left = `${screenX + 60}px`;
+      bar.style.top = `${screenY - 60}px`;
+      bar.style.display = 'flex';
+    }
+
+    function hideChargeBarUI() {
+      document.getElementById('charge-bar-container').style.display = 'none';
+    }
+
+    function showNotice(msg) {
+      document.getElementById('notice-text').innerText = msg;
+    }
+
+    function triggerScorePopup(text, isPositive) {
+      const container = document.getElementById('score-popup-container');
+      const el = document.createElement('div');
+      el.className = `score-popup ${isPositive ? 'popup-green' : 'popup-red'}`;
+      el.innerText = text;
+      container.appendChild(el);
+
+      setTimeout(() => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 1000);
+    }
+
+    /* ==========================================
+       9. GAME PHYSICS & MAIN LOOP
+       ========================================== */
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (gameState.active) {
+        updateFruits();
+        updateArrows();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function updateFruits() {
+      for (let i = activeFruits.length - 1; i >= 0; i--) {
+        const item = activeFruits[i];
+        item.mesh.position.y -= item.speed;
+        item.mesh.rotation.y += 0.01;
+
+        // Check missed fruit reaching bottom screen
+        if (item.mesh.position.y < -4.5) {
+          scene.remove(item.mesh);
+          activeFruits.splice(i, 1);
+
+          if (item.isVerb) {
+            gameState.score = Math.max(0, gameState.score - 5);
+            document.getElementById('score-val').innerText = gameState.score;
+            showNotice('-5 กริยาตกพื้น');
+            triggerScorePopup('-5', false);
+            sound.playHitBad();
+          }
+        }
+      }
+    }
+
+    function updateArrows() {
+      for (let i = activeArrows.length - 1; i >= 0; i--) {
+        const arrow = activeArrows[i];
+        arrow.mesh.position.add(arrow.vel);
+        arrow.vel.y -= arrow.gravity; // Apply Arc Gravity
+
+        // Rotate arrow to point along velocity trajectory
+        const angle = Math.atan2(arrow.vel.y, -arrow.vel.x);
+        arrow.mesh.rotation.z = angle;
+
+        // Check collision with fruits
+        let hit = false;
+        for (let j = activeFruits.length - 1; j >= 0; j--) {
+          const fruit = activeFruits[j];
+          const dist = arrow.mesh.position.distanceTo(fruit.mesh.position);
+
+          if (dist < 0.9) { // Collision detected
+            hit = true;
+            if (fruit.isVerb) {
+              gameState.score += 10;
+              showNotice('+10 ถูกต้อง!');
+              triggerScorePopup('+10', true);
+              sound.playHitGood();
+            } else {
+              gameState.score = Math.max(0, gameState.score - 5);
+              showNotice('-5 คำหลอก!');
+              triggerScorePopup('-5', false);
+              sound.playHitBad();
+            }
+
+            document.getElementById('score-val').innerText = gameState.score;
+
+            // Remove hit fruit
+            scene.remove(fruit.mesh);
+            activeFruits.splice(j, 1);
+            break;
+          }
+        }
+
+        // Remove out of bounds arrows
+        if (hit || arrow.mesh.position.x < -10 || arrow.mesh.position.y < -6) {
+          scene.remove(arrow.mesh);
+          activeArrows.splice(i, 1);
+        }
+      }
+    }
+
+    /* ==========================================
+       10. GAME LIFECYCLE & CONTROLS
+       ========================================== */
+    function startGame() {
+      sound.init();
+      gameState.score = 0;
+      gameState.timeLeft = CONFIG.gameDuration;
+      gameState.questionCount = 0;
+      gameState.active = true;
+
+      document.getElementById('score-val').innerText = '0';
+      document.getElementById('timer-val').innerText = `${CONFIG.gameDuration}s`;
+      document.getElementById('quest-val').innerText = `0/${CONFIG.totalQuestions}`;
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('end-screen').style.display = 'none';
+
+      // Clear existing entities
+      clearSceneEntities();
+
+      // Timers
+      clearInterval(timerInterval);
+      clearInterval(spawnInterval);
+
+      timerInterval = setInterval(() => {
+        gameState.timeLeft--;
+        document.getElementById('timer-val').innerText = `${gameState.timeLeft}s`;
+
+        if (gameState.timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+
+      spawnInterval = setInterval(spawnFruit, CONFIG.spawnInterval);
+      spawnFruit(); // Immediate first spawn
+    }
+
+    function endGame() {
+      gameState.active = false;
+      clearInterval(timerInterval);
+      clearInterval(spawnInterval);
+
+      document.getElementById('final-score').innerText = gameState.score;
+      document.getElementById('end-screen').style.display = 'flex';
+    }
+
+    function clearSceneEntities() {
+      activeFruits.forEach(f => scene.remove(f.mesh));
+      activeArrows.forEach(a => scene.remove(a.mesh));
+      activeFruits = [];
+      activeArrows = [];
+    }
+
+    /* ==========================================
+       11. EVENT LISTENERS & INITIALIZATION
+       ========================================== */
+    document.getElementById('btn-start').addEventListener('click', startGame);
+    document.getElementById('btn-play-again').addEventListener('click', startGame);
+    document.getElementById('btn-retry').addEventListener('click', () => location.reload());
+
+    // Toggle Buttons
+    const btnSwap = document.getElementById('btn-swap');
+    btnSwap.addEventListener('click', () => {
+      gameState.swapHands = !gameState.swapHands;
+      btnSwap.className = `toggle-btn ${gameState.swapHands ? 'on' : 'off'}`;
+      btnSwap.querySelector('span').innerText = gameState.swapHands ? 'เปิด' : 'ปิด';
+    });
+
+    const btnPoints = document.getElementById('btn-points');
+    btnPoints.addEventListener('click', () => {
+      gameState.showPoints = !gameState.showPoints;
+      btnPoints.className = `toggle-btn ${gameState.showPoints ? 'on' : 'off'}`;
+      btnPoints.querySelector('span').innerText = gameState.showPoints ? 'เปิด' : 'ปิด';
+    });
+
+    const btnSound = document.getElementById('btn-sound');
+    btnSound.addEventListener('click', () => {
+      sound.enabled = !sound.enabled;
+      btnSound.className = `toggle-btn ${sound.enabled ? 'on' : 'off'}`;
+      btnSound.querySelector('span').innerText = sound.enabled ? 'เปิด' : 'ปิด';
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      if (confirm('คุณต้องการเริ่มเกมใหม่ใช่หรือไม่?')) {
+        startGame();
+      }
+    });
+
+    // Boot Up Engine
+    window.addEventListener('load', () => {
+      initThreeJS();
+      initMediaPipe();
+      animate();
+    });
+  </script>
+</body>
+</html>
